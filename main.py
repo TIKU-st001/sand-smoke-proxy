@@ -293,11 +293,33 @@ def get_data(videoid):
     )
 
 def getting_data(videoid):
+    # ストリームURLを取得するためのAPIのリスト
+    stream_api_urls = [
+        f"https://sand-smoke-api.onrender.com/api/sand-smoke/stream/{urllib.parse.quote(videoid)}",
+        f"https://new-era-hack.onrender.com/api/sand-smoke/stream/{urllib.parse.quote(videoid)}",
+        f"https://new-era-hack.vercel.app/api/sand-smoke/stream/{urllib.parse.quote(videoid)}",
+        f"https://watawatawata.glitch.me/api/{urllib.parse.quote(videoid)}?token=wakameoishi"
+    ]
+
+    stream_url = ""
+    
+    # ストリームURLを取得
+    for api_url in stream_api_urls:
+        try:
+            stream_response = requests.get(api_url)
+            if stream_response.status_code == 200:
+                stream_data = stream_response.json()
+                stream_url = stream_data.get("stream_url", "")
+                if stream_url:  # ストリームURLが取得できたらループを抜ける
+                    break
+            else:
+                print(f"ストリームAPIエラー: ステータスコード {stream_response.status_code}")
+        except Exception as e:
+            print(f"ストリームURLの取得中にエラーが発生しました: {e}")
+
+    # 既存のデータ取得処理を行う
     urls = [
         f"https://ludicrous-wonderful-temple.glitch.me/api/login/{urllib.parse.quote(videoid)}",
-        f"https://free-sudden-kiss.glitch.me/api/login/{urllib.parse.quote(videoid)}",
-        f"https://wakame02m.glitch.me/api/login/{urllib.parse.quote(videoid)}",
-        f"https://natural-voltaic-titanium.glitch.me/api/login/{urllib.parse.quote(videoid)}",
         f"https://watawatawata.glitch.me/api/{urllib.parse.quote(videoid)}?token=wakameoishi",
         f"https://jade-highfalutin-account.glitch.me/api/login/{urllib.parse.quote(videoid)}"
     ]
@@ -318,11 +340,6 @@ def getting_data(videoid):
                 }]
                 
                 # 必要な情報を取得
-                stream_urls = [
-                    t["stream_url"],
-                    t.get("highstreamUrl", ""),
-                    t.get("audioUrl", "")
-                ]
                 description = t["videoDes"].replace("\n", "<br>")
                 title = t["videoTitle"]
                 authorId = t["channelId"]
@@ -333,13 +350,13 @@ def getting_data(videoid):
                 # get_dataの形式に合わせて返す
                 return (
                     related_videos,  # 推奨動画
-                    stream_urls,     # ストリームURL
-                    description,     # 説明文
-                    title,           # 動画タイトル
-                    authorId,        # アウティアのID
-                    author,          # 動画の作者
-                    author_icon,     # 作者のアイコンURL
-                    view_count       # ビュー数
+                    [stream_url],     # ストリームURLを追加
+                    description,      # 説明文
+                    title,            # 動画タイトル
+                    authorId,         # アウティアのID
+                    author,           # 動画の作者
+                    author_icon,      # 作者のアイコンURL
+                    view_count        # ビュー数
                 )
         except Exception as e:
             print(f"{url} からのデータ取得に失敗しました: {e}")
@@ -773,4 +790,44 @@ def video(
         "authoricon": t[6],
         "author": t[5],
         "proxy": proxy
+    })
+
+# 新しい変数をteigiした
+max_stream_api_wait_time = 7  # ストリームAPIリクエストの最大待機時間
+
+@app.get('/watch/{v}/stream', response_class=HTMLResponse)
+def stream(
+    v: str, 
+    response: Response, 
+    request: Request
+):
+    stream_url = None
+    start_time = time.time()  # リクエスト開始時刻を記録
+
+    # タイムアウト処理を考慮してループ
+    while True:
+        try:
+            api_response = requests.get(f"https://new-era-hack.vercel.app/api/sand-smoke/stream/{urllib.parse.quote(v)}", timeout=max_stream_api_wait_time)
+            
+            if api_response.status_code == 200:
+                # ストリームURLを取得
+                data = api_response.json()
+                stream_url = data.get("stream_url")
+                break  # 成功したらループを抜ける
+            else:
+                print(f"APIエラー: ステータスコード {api_response.status_code}")
+        except requests.Timeout:
+            print("タイムアウトが発生しました")
+            if time.time() - start_time >= max_stream_api_wait_time:
+                # 最大待機時間を超えた場合はAPItimeoutErrorを発生させる
+                raise APItimeoutError("ストリームAPIがタイムアウトしました")
+        except Exception as e:
+            print(f"ストリームURLの取得中にエラーが発生しました: {e}")
+            break  # それ以外のエラーが発生した場合はループを抜ける
+
+    # テンプレートにストリームURLを渡す
+    return template('stream.html', {
+        "request": request,
+        "videoid": v,
+        "stream_url": stream_url  # ストリームURLをテンプレートに渡す
     })
